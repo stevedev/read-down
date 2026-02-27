@@ -14,23 +14,19 @@ A native macOS markdown reader with tabbed documents, mermaid diagrams, and IDE-
 - **CLI tool** — `readdown file.md` opens files from the terminal
 - **macOS `open` integration** — `open file.md` launches ReadDown when set as default
 
-## Requirements
+## Install
 
-- macOS 14.0+
-- Xcode 15+ (for building)
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
+### Download (recommended)
 
-## Quick Start
+Grab the latest `.zip` from [Releases](https://github.com/stevedev/read-down/releases), unzip, and drag **ReadDown.app** to `/Applications`.
+
+### Build from source
+
+Requires macOS 14.0+, Xcode 15+, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ```bash
-# Install dependencies and generate Xcode project
-make setup
-
-# Build the app
-make build
-
-# Install to /Applications + CLI to /usr/local/bin
-make install-all
+make setup        # download JS deps + generate Xcode project
+make install-all  # build and install app + CLI
 ```
 
 ## Usage
@@ -52,6 +48,7 @@ open README.md
 |-----------------|-------------------|
 | Back            | Cmd + [           |
 | Forward         | Cmd + ]           |
+| Find            | Cmd + F           |
 | Theme 1-8       | Ctrl + Cmd + 1-8  |
 
 ## Adding a New Theme

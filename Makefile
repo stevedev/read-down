@@ -1,10 +1,11 @@
-.PHONY: setup generate build run install install-cli clean bump-major bump-minor bump-patch
+.PHONY: setup generate build run install install-cli clean bump-major bump-minor bump-patch package release
 
 BUILD_DIR := build
 APP_NAME := ReadDown
 CLI_NAME := readdown
 INSTALL_DIR := /Applications
 CLI_INSTALL_DIR := /usr/local/bin
+DIST_DIR := dist
 
 VERSION := $(shell cat VERSION)
 BUILD_NUMBER := $(shell cat BUILD_NUMBER)
@@ -65,7 +66,22 @@ bump-patch:
 	@echo "1" > BUILD_NUMBER
 	@echo "==> Version: $$(cat VERSION)"
 
+package: build
+	@echo "==> Packaging $(APP_NAME).app v$(VERSION)..."
+	@mkdir -p $(DIST_DIR)
+	@cd "$(BUILD_DIR)/Build/Products/Release" && zip -r -q "$(CURDIR)/$(DIST_DIR)/$(APP_NAME)-$(VERSION).zip" "$(APP_NAME).app"
+	@echo "==> Created $(DIST_DIR)/$(APP_NAME)-$(VERSION).zip"
+
+release: package
+	@echo "==> Creating GitHub release v$(VERSION)..."
+	gh release create "v$(VERSION)" \
+		"$(DIST_DIR)/$(APP_NAME)-$(VERSION).zip#$(APP_NAME).app (macOS)" \
+		--title "$(APP_NAME) v$(VERSION)" \
+		--generate-notes
+	@echo "==> Released v$(VERSION)"
+
 clean:
 	@rm -rf $(BUILD_DIR)
+	@rm -rf $(DIST_DIR)
 	@rm -rf $(APP_NAME).xcodeproj
 	@echo "==> Cleaned."

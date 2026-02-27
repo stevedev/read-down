@@ -1,4 +1,5 @@
 build/
+dist/
 ReadDown.xcodeproj/
 .DS_Store
 *.xcworkspace

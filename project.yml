@@ -65,8 +65,22 @@ targets:
         MARKETING_VERSION: "1.1.0"
         CURRENT_PROJECT_VERSION: "1"
     scheme:
-      testTargets: []
+      testTargets:
+        - ReadDownTests
       commandLineArguments: {}
+
+  ReadDownTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: ReadDownTests
+    dependencies:
+      - target: ReadDown
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.readdown.ReadDownTests
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: YES
 
   ReadDownCLI:
     type: tool

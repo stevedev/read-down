@@ -4,17 +4,27 @@ import SwiftUI
 final class ThemeManager {
     static let shared = ThemeManager()
 
+    private let defaults: UserDefaults
+    private let bundle: Bundle
+    static let defaultsKey = "selectedTheme"
+
     var current: Theme {
-        didSet { UserDefaults.standard.set(current.rawValue, forKey: "selectedTheme") }
+        didSet { defaults.set(current.rawValue, forKey: Self.defaultsKey) }
     }
 
-    private init() {
-        let stored = UserDefaults.standard.string(forKey: "selectedTheme") ?? ""
+    convenience init() {
+        self.init(defaults: .standard, bundle: .main)
+    }
+
+    init(defaults: UserDefaults, bundle: Bundle) {
+        self.defaults = defaults
+        self.bundle = bundle
+        let stored = defaults.string(forKey: Self.defaultsKey) ?? ""
         self.current = Theme(rawValue: stored) ?? .githubLight
     }
 
     func cssContent() -> String {
-        guard let url = Bundle.main.url(forResource: current.cssFileName, withExtension: "css", subdirectory: "themes"),
+        guard let url = bundle.url(forResource: current.cssFileName, withExtension: "css", subdirectory: "themes"),
               let css = try? String(contentsOf: url, encoding: .utf8) else {
             return ""
         }

@@ -1,4 +1,4 @@
-.PHONY: setup generate build run install install-cli clean bump-major bump-minor bump-patch package release
+.PHONY: setup generate build test run install install-cli clean bump-major bump-minor bump-patch package release
 
 BUILD_DIR := build
 APP_NAME := ReadDown
@@ -29,6 +29,14 @@ build: generate increment-build
 		MARKETING_VERSION=$(VERSION) \
 		CURRENT_PROJECT_VERSION=$(shell cat BUILD_NUMBER) \
 		build
+
+test: generate
+	xcodebuild \
+		-project $(APP_NAME).xcodeproj \
+		-scheme $(APP_NAME) \
+		-configuration Debug \
+		-derivedDataPath $(BUILD_DIR) \
+		test
 
 build-cli: generate
 	xcodebuild \

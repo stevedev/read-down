@@ -213,7 +213,7 @@ struct MarkdownWebView: NSViewRepresentable {
                 return
             }
 
-            if url.isFileURL, isMarkdownFile(url) {
+            if url.isFileURL, LinkResolver.isMarkdownFile(url) {
                 decisionHandler(.cancel)
                 DispatchQueue.main.async { [weak self] in
                     self?.onNavigateToFile?(url)
@@ -221,7 +221,7 @@ struct MarkdownWebView: NSViewRepresentable {
                 return
             }
 
-            if isMarkdownFile(url), let base = baseURL {
+            if LinkResolver.isMarkdownFile(url), let base = baseURL {
                 let relativePath = url.path.hasPrefix("/") ? String(url.path.dropFirst()) : url.path
                 let resolved = base.deletingLastPathComponent().appendingPathComponent(relativePath)
                 decisionHandler(.cancel)
@@ -275,14 +275,12 @@ struct MarkdownWebView: NSViewRepresentable {
                 return
             }
 
-            guard let base = baseURL else { return }
-            let resolved = base.deletingLastPathComponent().appendingPathComponent(href)
-            let standardized = resolved.standardized
+            guard let resolved = LinkResolver.resolve(href: href, relativeTo: baseURL) else { return }
 
-            if isMarkdownFile(standardized) {
+            if LinkResolver.isMarkdownFile(resolved) {
                 logger.debug("linkClicked: \(href) scrollY=\(scrollY)")
                 DispatchQueue.main.async { [weak self] in
-                    self?.onLinkClickedWithScroll?(standardized, scrollY)
+                    self?.onLinkClickedWithScroll?(resolved, scrollY)
                 }
             }
         }
@@ -301,11 +299,6 @@ struct MarkdownWebView: NSViewRepresentable {
             DispatchQueue.main.async { [weak self] in
                 self?.onHeadingsExtracted?(headings)
             }
-        }
-
-        private func isMarkdownFile(_ url: URL) -> Bool {
-            let ext = url.pathExtension.lowercased()
-            return ["md", "markdown", "mdown", "mkd"].contains(ext)
         }
     }
 }

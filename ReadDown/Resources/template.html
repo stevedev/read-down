@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style id="theme-style"></style>
+<style>
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 15px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+    }
+    .markdown-body {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 32px 24px;
+        word-wrap: break-word;
+    }
+    .markdown-body table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 16px 0;
+    }
+    .markdown-body th, .markdown-body td {
+        border: 1px solid var(--border-color, #ddd);
+        padding: 8px 12px;
+        text-align: left;
+    }
+    .markdown-body th {
+        font-weight: 600;
+    }
+    .markdown-body img {
+        max-width: 100%;
+        height: auto;
+    }
+    .markdown-body pre {
+        overflow-x: auto;
+        padding: 16px;
+        border-radius: 6px;
+    }
+    .markdown-body code {
+        font-family: "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9em;
+    }
+    .markdown-body pre code {
+        font-size: 0.85em;
+    }
+    .markdown-body blockquote {
+        margin: 16px 0;
+        padding: 0 16px;
+        border-left: 4px solid var(--border-color, #ddd);
+        opacity: 0.85;
+    }
+    .markdown-body a {
+        text-decoration: none;
+    }
+    .markdown-body a:hover {
+        text-decoration: underline;
+    }
+    .markdown-body hr {
+        border: none;
+        border-top: 1px solid var(--border-color, #ddd);
+        margin: 24px 0;
+    }
+    .mermaid {
+        text-align: center;
+        margin: 16px 0;
+    }
+</style>
+<script>MARKED_JS_PLACEHOLDER</script>
+<script>MERMAID_JS_PLACEHOLDER</script>
+</head>
+<body>
+<div id="content" class="markdown-body"></div>
+<script>
+(function() {
+    const renderer = new marked.Renderer();
+
+    // Intercept code blocks for mermaid
+    const originalCode = renderer.code;
+    renderer.code = function({ text, lang }) {
+        if (lang === "mermaid") {
+            return '<div class="mermaid">' + text + '</div>';
+        }
+        const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const langClass = lang ? ' class="language-' + lang + '"' : '';
+        return '<pre><code' + langClass + '>' + escaped + '</code></pre>';
+    };
+
+    marked.setOptions({
+        renderer: renderer,
+        gfm: true,
+        breaks: false
+    });
+
+    let mermaidInitialized = false;
+
+    function initMermaid(isDark) {
+        const theme = isDark ? "dark" : "default";
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: theme,
+            securityLevel: "loose"
+        });
+        mermaidInitialized = true;
+    }
+
+    async function renderMermaidBlocks() {
+        const blocks = document.querySelectorAll(".mermaid");
+        for (let i = 0; i < blocks.length; i++) {
+            const block = blocks[i];
+            const code = block.textContent;
+            try {
+                const { svg } = await mermaid.render("mermaid-" + i, code);
+                block.innerHTML = svg;
+            } catch (e) {
+                block.innerHTML = '<pre style="color:red;">Mermaid error: ' + e.message + '</pre>';
+            }
+        }
+    }
+
+    window.renderMarkdown = async function(mdText, isDark) {
+        if (!mermaidInitialized || isDark !== window._lastIsDark) {
+            initMermaid(isDark);
+            window._lastIsDark = isDark;
+        }
+        const html = marked.parse(mdText);
+        document.getElementById("content").innerHTML = html;
+        await renderMermaidBlocks();
+    };
+
+    window.applyThemeCSS = function(css) {
+        document.getElementById("theme-style").textContent = css;
+    };
+
+    // For copy-as-markdown: store raw markdown
+    window._rawMarkdown = "";
+    window.setRawMarkdown = function(md) {
+        window._rawMarkdown = md;
+    };
+    window.getRawMarkdown = function() {
+        return window._rawMarkdown;
+    };
+
+    // Get selected text as plain text (for markdown copy)
+    window.getSelectedText = function() {
+        return window.getSelection().toString();
+    };
+
+    // Get selected range info for mapping back to markdown source
+    window.getSelectionInfo = function() {
+        const sel = window.getSelection();
+        if (!sel.rangeCount) return null;
+        return {
+            text: sel.toString(),
+            hasSelection: sel.toString().length > 0
+        };
+    };
+})();
+</script>
+</body>
+</html>

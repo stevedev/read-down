@@ -1,0 +1,28 @@
+:root {
+    --bg-color: #282a36;
+    --text-color: #f8f8f2;
+    --heading-color: #bd93f9;
+    --link-color: #8be9fd;
+    --code-bg: #44475a;
+    --border-color: #6272a4;
+    --blockquote-color: #6272a4;
+    --table-alt-bg: #2d2f3b;
+    --table-header-bg: #44475a;
+}
+
+html { background-color: var(--bg-color); color: var(--text-color); }
+.markdown-body { color: var(--text-color); }
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 { color: var(--heading-color); }
+.markdown-body h1, .markdown-body h2 { border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; }
+.markdown-body a { color: var(--link-color); }
+.markdown-body code { background-color: var(--code-bg); padding: 0.2em 0.4em; border-radius: 4px; color: #50fa7b; }
+.markdown-body pre { background-color: var(--code-bg); border: 1px solid var(--border-color); }
+.markdown-body pre code { background: none; padding: 0; color: var(--text-color); }
+.markdown-body blockquote { color: var(--blockquote-color); border-left-color: #ff79c6; }
+.markdown-body th { background-color: var(--table-header-bg); }
+.markdown-body tr:nth-child(even) { background-color: var(--table-alt-bg); }
+.markdown-body th, .markdown-body td { border-color: var(--border-color); }
+.markdown-body hr { border-top-color: var(--border-color); }
+.markdown-body strong { color: #ffb86c; }
+.markdown-body em { color: #f1fa8c; }

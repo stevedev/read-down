@@ -1,0 +1,56 @@
+name: ReadDown
+options:
+  bundleIdPrefix: com.readdown
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+targets:
+  ReadDown:
+    type: application
+    platform: macOS
+    sources:
+      - path: ReadDown
+        excludes:
+          - "**/*.css"
+          - "**/*.html"
+          - "**/*.js"
+          - Resources
+      - path: ReadDown/Resources/template.html
+        buildPhase: resources
+      - path: ReadDown/Resources/js
+        buildPhase: resources
+        type: folder
+      - path: ReadDown/Resources/themes
+        buildPhase: resources
+        type: folder
+    info:
+      path: ReadDown/Info.plist
+    entitlements:
+      path: ReadDown/ReadDown.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.readdown.ReadDown
+        PRODUCT_NAME: ReadDown
+        INFOPLIST_FILE: ReadDown/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ReadDown/ReadDown.entitlements
+        ENABLE_APP_SANDBOX: false
+    scheme:
+      testTargets: []
+      commandLineArguments: {}
+
+  ReadDownCLI:
+    type: tool
+    platform: macOS
+    sources:
+      - path: CLI
+    settings:
+      base:
+        PRODUCT_NAME: readdown
+        SWIFT_VERSION: "5.9"

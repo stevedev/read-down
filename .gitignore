@@ -1,0 +1,8 @@
+build/
+ReadDown.xcodeproj/
+.DS_Store
+*.xcworkspace
+xcuserdata/
+DerivedData/
+ReadDown/Resources/js/*.js
+test.md

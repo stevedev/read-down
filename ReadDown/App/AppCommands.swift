@@ -4,6 +4,25 @@ struct AppCommands: Commands {
     @Bindable var themeManager = ThemeManager.shared
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About ReadDown") {
+                let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+                let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+                NSApplication.shared.orderFrontStandardAboutPanel(options: [
+                    .applicationName: "ReadDown",
+                    .applicationVersion: version,
+                    .version: build,
+                    .credits: NSAttributedString(
+                        string: "A native macOS markdown reader with GFM support, mermaid diagrams, and IDE-inspired themes.",
+                        attributes: [
+                            .font: NSFont.systemFont(ofSize: 11),
+                            .foregroundColor: NSColor.secondaryLabelColor
+                        ]
+                    )
+                ])
+            }
+        }
+
         CommandMenu("Theme") {
             ForEach(Theme.allCases) { theme in
                 Button(theme.displayName) {

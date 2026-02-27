@@ -32,6 +32,27 @@ targets:
         type: folder
     info:
       path: ReadDown/Info.plist
+      properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSHumanReadableCopyright: "Copyright © 2026 ReadDown. All rights reserved."
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Markdown Document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - net.daringfireball.markdown
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: net.daringfireball.markdown
+            UTTypeDescription: Markdown Document
+            UTTypeConformsTo:
+              - public.plain-text
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - md
+                - markdown
+                - mdown
+                - mkd
     entitlements:
       path: ReadDown/ReadDown.entitlements
     settings:
@@ -41,6 +62,8 @@ targets:
         INFOPLIST_FILE: ReadDown/Info.plist
         CODE_SIGN_ENTITLEMENTS: ReadDown/ReadDown.entitlements
         ENABLE_APP_SANDBOX: false
+        MARKETING_VERSION: "1.1.0"
+        CURRENT_PROJECT_VERSION: "1"
     scheme:
       testTargets: []
       commandLineArguments: {}
@@ -54,3 +77,5 @@ targets:
       base:
         PRODUCT_NAME: readdown
         SWIFT_VERSION: "5.9"
+    scheme:
+      commandLineArguments: {}

@@ -160,6 +160,25 @@
             hasSelection: sel.toString().length > 0
         };
     };
+
+    window.setBaseURL = function(url) {
+        var base = document.querySelector('base');
+        if (!base) {
+            base = document.createElement('base');
+            document.head.prepend(base);
+        }
+        base.href = url;
+    };
+
+    document.addEventListener('click', function(e) {
+        var target = e.target;
+        while (target && target.tagName !== 'A') target = target.parentElement;
+        if (!target) return;
+        var href = target.getAttribute('href');
+        if (!href || href.startsWith('#')) return;
+        e.preventDefault();
+        window.webkit.messageHandlers.linkClicked.postMessage(href);
+    });
 })();
 </script>
 </body>

@@ -18,6 +18,7 @@ struct MarkdownWebView: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.webView = webView
 
+        webView.configuration.userContentController.add(coordinator, name: "linkClicked")
         loadTemplate(into: webView, coordinator: coordinator)
         setupContextMenu(webView: webView, coordinator: coordinator)
 
@@ -31,6 +32,7 @@ struct MarkdownWebView: NSViewRepresentable {
         coordinator.currentTheme = theme
 
         if coordinator.isLoaded {
+            updateBaseURL(in: webView, baseURL: baseURL)
             applyTheme(to: webView, theme: theme)
             renderMarkdown(in: webView, markdown: markdown, isDark: theme.isDark)
         } else {
@@ -62,6 +64,15 @@ struct MarkdownWebView: NSViewRepresentable {
             return ""
         }
         return js
+    }
+
+    private func updateBaseURL(in webView: WKWebView, baseURL: URL?) {
+        guard let base = baseURL else { return }
+        let dirURL = base.deletingLastPathComponent()
+        let escaped = dirURL.absoluteString
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        webView.evaluateJavaScript("window.setBaseURL('\(escaped)');")
     }
 
     private func applyTheme(to webView: WKWebView, theme: Theme) {
@@ -109,6 +120,14 @@ struct MarkdownWebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             isLoaded = true
             if let pending = pendingMarkdown {
+                if let base = baseURL {
+                    let dirURL = base.deletingLastPathComponent()
+                    let escaped = dirURL.absoluteString
+                        .replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "'", with: "\\'")
+                    webView.evaluateJavaScript("window.setBaseURL('\(escaped)');")
+                }
+
                 let css = ThemeManager.shared.cssContent()
                 let escapedCSS = css
                     .replacingOccurrences(of: "\\", with: "\\\\")
@@ -137,25 +156,26 @@ struct MarkdownWebView: NSViewRepresentable {
                 return
             }
 
-            if url.isFileURL, isMarkdownFile(url) {
-                decisionHandler(.cancel)
-                onNavigateToFile?(url)
-                return
-            }
-
             if let scheme = url.scheme, scheme == "http" || scheme == "https" {
                 decisionHandler(.cancel)
                 NSWorkspace.shared.open(url)
                 return
             }
 
-            if url.scheme == "file", let base = baseURL {
-                let resolved = base.deletingLastPathComponent().appendingPathComponent(url.path)
-                if isMarkdownFile(resolved) {
-                    decisionHandler(.cancel)
-                    onNavigateToFile?(resolved)
-                    return
-                }
+            if url.isFileURL, isMarkdownFile(url) {
+                decisionHandler(.cancel)
+                onNavigateToFile?(url)
+                return
+            }
+
+            // Fallback: URL has a markdown extension but wasn't resolved to a file://
+            // URL (e.g. applewebdata:// from a nil base URL). Resolve manually.
+            if isMarkdownFile(url), let base = baseURL {
+                let relativePath = url.path.hasPrefix("/") ? String(url.path.dropFirst()) : url.path
+                let resolved = base.deletingLastPathComponent().appendingPathComponent(relativePath)
+                decisionHandler(.cancel)
+                onNavigateToFile?(resolved)
+                return
             }
 
             decisionHandler(.allow)
@@ -165,7 +185,23 @@ struct MarkdownWebView: NSViewRepresentable {
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            // Context menu message handling is managed via NSView menu override
+            guard message.name == "linkClicked",
+                  let href = message.body as? String else { return }
+
+            if href.hasPrefix("http://") || href.hasPrefix("https://") {
+                if let url = URL(string: href) {
+                    NSWorkspace.shared.open(url)
+                }
+                return
+            }
+
+            guard let base = baseURL else { return }
+            let resolved = base.deletingLastPathComponent().appendingPathComponent(href)
+            let standardized = resolved.standardized
+
+            if isMarkdownFile(standardized) {
+                onNavigateToFile?(standardized)
+            }
         }
 
         private func isMarkdownFile(_ url: URL) -> Bool {

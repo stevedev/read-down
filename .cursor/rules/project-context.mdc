@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## 1. Core Purpose
 
-ReadDown is a native macOS markdown reader application. It renders `.md` files with full GFM support (tables, task lists, fenced code), mermaid diagrams, and 8 IDE-inspired color themes. Documents open in tabs, local `.md` links can be followed within a tab (with back/forward navigation), and files auto-reload on disk changes.
+ReadDown is a native macOS markdown reader application. It renders `.md` files with full GFM support (tables, task lists, fenced code), mermaid diagrams, syntax-highlighted code blocks, and 8 IDE-inspired color themes. Documents open in tabs, local `.md` links can be followed within a tab (with back/forward navigation and scroll position memory), and files auto-reload on disk changes. Includes Cmd+F find-in-document, a table of contents sidebar, and relative image rendering.
 
 ## 2. Architecture
 
@@ -30,8 +30,9 @@ Key architectural decisions:
 - **WKWebView over native SwiftUI rendering** — SwiftUI markdown doesn't support tables or mermaid. WKWebView + JS gives full GFM + extensible rendering.
 - **DocumentGroup** — SwiftUI's `DocumentGroup(viewing:)` provides native macOS tab support and automatic `open` command integration via UTI registration in Info.plist.
 - **CSS-based themes** — Each theme is a standalone CSS file using CSS custom properties. Adding a theme = one CSS file + one `Theme` enum case.
-- **JS bundled locally** — `marked.min.js` and `mermaid.min.js` are downloaded during setup and bundled in the app for offline use.
+- **JS bundled locally** — `marked.min.js`, `mermaid.min.js`, and `highlight.min.js` are downloaded during setup and bundled in the app for offline use.
 - **DispatchSource file watching** — Kernel-level file system monitoring per-tab, triggers re-render on write/rename/delete events.
+- **Continuous scroll tracking** — Debounced JS scroll listener reports position to Swift via WKScriptMessageHandler, avoiding async race conditions on navigation.
 
 ## 3. Technology Stack
 
@@ -42,110 +43,147 @@ Key architectural decisions:
 | Rendering | WKWebView + WebKit |
 | Markdown parsing | marked.js v15.0.6 (GFM mode) |
 | Diagrams | mermaid.js v11.4.1 |
+| Syntax highlighting | highlight.js v11.11.1 |
 | Theming | CSS custom properties |
 | Build system | XcodeGen → Xcode project → xcodebuild |
 | File watching | DispatchSource (GCD) |
+| Testing | XCTest (63 tests) |
+| CI/CD | GitHub Actions (release on tag push) |
 
 ## 4. Project Structure
 
 ```
 read-down/
 ├── project.yml                          # XcodeGen spec → generates .xcodeproj
-├── Makefile                             # setup, generate, build, install, clean
+├── Makefile                             # setup, generate, build, test, install, package, release, clean
 ├── README.md
+├── VERSION                              # Semantic version (e.g. 1.2.0)
+├── BUILD_NUMBER                         # Auto-incremented on each build
 ├── Scripts/
 │   └── setup.sh                         # Downloads JS deps, installs XcodeGen, generates project
+├── .github/
+│   └── workflows/
+│       └── release.yml                  # GitHub Actions: build + publish release on version tag push
 ├── ReadDown/                            # Main app target
 │   ├── App/
-│   │   ├── ReadDownApp.swift            # @main entry, DocumentGroup(viewing:)
-│   │   └── AppCommands.swift            # Theme menu, back/forward commands, Notification.Name extensions
+│   │   ├── ReadDownApp.swift            # @main entry, DocumentGroup(viewing:), AppDelegate for tab/window prefs
+│   │   └── AppCommands.swift            # Theme menu, back/forward/find commands, About panel, Notification.Name extensions
 │   ├── Models/
 │   │   ├── MarkdownDocument.swift       # FileDocument conformance, UTType.markdown extension
-│   │   ├── NavigationHistory.swift      # @Observable back/forward stack per tab
+│   │   ├── NavigationHistory.swift      # @Observable back/forward stack with scroll position memory per tab
 │   │   └── Theme.swift                  # Theme enum (8 cases), display names, CSS file mapping
 │   ├── Views/
-│   │   ├── ContentView.swift            # Toolbar (back/fwd/theme picker) + MarkdownWebView
+│   │   ├── ContentView.swift            # Toolbar, find bar, TOC sidebar, MarkdownWebView, navigation logic
 │   │   └── MarkdownWebView.swift        # NSViewRepresentable WKWebView, Coordinator handles navigation delegate + JS bridge
 │   ├── Services/
-│   │   ├── ThemeManager.swift           # @Observable singleton, persists to UserDefaults
-│   │   └── FileWatcher.swift            # DispatchSource wrapper for file system monitoring
+│   │   ├── ThemeManager.swift           # @Observable, injectable (defaults + bundle), persists to UserDefaults
+│   │   ├── FileWatcher.swift            # DispatchSource wrapper for file system monitoring
+│   │   └── LinkResolver.swift           # Markdown file detection + relative/absolute URL resolution
 │   ├── Resources/
-│   │   ├── template.html                # HTML shell: loads theme CSS, marked.js, mermaid.js; exposes renderMarkdown/applyThemeCSS/getRawMarkdown JS API
+│   │   ├── template.html                # HTML shell: marked.js, mermaid.js, highlight.js; renderMarkdown/applyThemeCSS/findText/scrollToHeading/extractHeadings JS API
 │   │   ├── js/
 │   │   │   ├── marked.min.js            # Downloaded during setup (not committed)
-│   │   │   └── mermaid.min.js           # Downloaded during setup (not committed)
+│   │   │   ├── mermaid.min.js           # Downloaded during setup (not committed)
+│   │   │   └── highlight.min.js         # Downloaded during setup (not committed)
 │   │   └── themes/
-│   │       ├── github-light.css         # Light
-│   │       ├── github-dark.css          # Dark
+│   │       ├── github-light.css         # Light (+ syntax highlighting rules)
+│   │       ├── github-dark.css          # Dark (+ syntax highlighting rules)
 │   │       ├── dracula.css              # Dark (purple accent)
 │   │       ├── one-dark.css             # Dark (Atom-style)
 │   │       ├── nord.css                 # Dark (arctic blue)
 │   │       ├── solarized-light.css      # Light (warm)
 │   │       ├── solarized-dark.css       # Dark (warm)
 │   │       └── monokai.css              # Dark (classic)
-│   ├── Info.plist                       # UTI registration for .md/.markdown/.mdown/.mkd
+│   ├── Info.plist                       # UTI registration for .md/.markdown/.mdown/.mkd, version from build settings
 │   └── ReadDown.entitlements            # Sandbox disabled, file read access
+├── ReadDownTests/                       # Unit test target (63 tests)
+│   ├── NavigationHistoryTests.swift     # Push, back/forward, truncation, scroll positions
+│   ├── ThemeTests.swift                 # Enum cases, isDark, display names, uniqueness
+│   ├── ThemeManagerTests.swift          # Persistence, CSS loading, defaults fallback
+│   ├── MarkdownDocumentTests.swift      # Init, content types, UTF-8 round-trip
+│   ├── FileWatcherTests.swift           # Watch, stop, callback, nonexistent file
+│   └── LinkResolverTests.swift          # Markdown detection, relative/absolute resolution, edge cases
 ├── CLI/
 │   └── main.swift                       # CLI tool: resolves path, calls `open -a ReadDown`
 ├── build/                               # xcodebuild output (gitignored)
+├── dist/                                # Packaged .zip for releases (gitignored)
 └── ReadDown.xcodeproj/                  # Generated by XcodeGen (gitignored)
 ```
 
 ## 5. Key Files & Responsibilities
 
 ### ReadDownApp.swift
-Entry point. Uses `DocumentGroup(viewing: MarkdownDocument.self)` which gives native tab support. Each opened file gets its own `ContentView` instance.
+Entry point. Uses `DocumentGroup(viewing: MarkdownDocument.self)` which gives native tab support. Each opened file gets its own `ContentView` instance. Includes `AppDelegate` via `@NSApplicationDelegateAdaptor` for tab preference (`AppleWindowTabbingMode: "always"`) and window size persistence (`frameAutosaveName`).
 
 ### MarkdownDocument.swift
 `FileDocument` conformance. Declares `UTType.markdown` (imported as `net.daringfireball.markdown`). Reads/writes UTF-8 `.md` files. `readableContentTypes` includes both `.markdown` and `.plainText`.
 
 ### ContentView.swift
 Per-document view. Owns:
-- `@State NavigationHistory` — per-tab back/forward stack
+- `@State NavigationHistory` — per-tab back/forward stack with scroll position memory
 - `@State FileWatcher` — per-tab file monitoring
 - `@State currentMarkdown` / `currentFileURL` — tracks current content (may differ from original doc when navigating linked files)
+- `@State showFind` / `findQuery` — Cmd+F find bar state
+- `@State headings` / `showTOC` — table of contents sidebar
+- `@State targetScrollY` — scroll position to restore after navigation
+- `ScrollPositionTracker` — continuously updated from JS scroll events (avoids async race conditions)
 
-Toolbar contains back/forward buttons, filename label, theme picker dropdown.
+Toolbar contains back/forward buttons, filename label, TOC toggle, theme picker dropdown. Find bar appears below toolbar on Cmd+F.
 
 ### MarkdownWebView.swift
 `NSViewRepresentable` wrapping `WKWebView`. The `Coordinator` (inner class) is both `WKNavigationDelegate` and `WKScriptMessageHandler`:
-- Intercepts link clicks: local `.md` files → `onNavigateToFile` callback; `http(s)` → opens in default browser
-- On initial load: injects `template.html` with marked.js and mermaid.js inlined (replaces placeholder strings)
-- On update: calls `window.renderMarkdown()` and `window.applyThemeCSS()` via `evaluateJavaScript`
+- Intercepts link clicks: local `.md` files → `onLinkClickedWithScroll` callback (includes scroll position); `http(s)` → opens in default browser
+- On initial load: injects `template.html` with marked.js, mermaid.js, and highlight.js inlined (replaces placeholder strings)
+- On update: guards redundant renders via `lastRenderedMarkdown`/`lastRenderedTheme` tracking; calls `window.renderMarkdown()` and `window.applyThemeCSS()` via `evaluateJavaScript`
+- Handles `linkClicked`, `headingsExtracted`, and `scrollPosition` messages from JS (all deferred to next run loop via `DispatchQueue.main.async`)
 
 ### template.html
 HTML shell loaded into WKWebView. Exposes JS API:
-- `window.renderMarkdown(mdText, isDark)` — parses MD via marked.js, post-processes mermaid blocks
+- `window.renderMarkdown(mdText, isDark, scrollY)` — parses MD via marked.js, post-processes mermaid blocks, runs highlight.js, rewrites relative images, extracts headings, scrolls to `scrollY`
 - `window.applyThemeCSS(css)` — injects theme CSS into `<style id="theme-style">`
 - `window.setRawMarkdown(md)` / `window.getRawMarkdown()` — stores raw MD for copy-as-markdown
 - `window.getSelectedText()` — returns selected text as plain string
+- `window.findText(query, forward)` — find-in-page via `window.find()`
+- `window.scrollToHeading(id)` — smooth scroll to heading by ID
+- `window.setBaseURL(url)` — dynamically updates `<base>` tag for relative path resolution
+- Debounced scroll listener posts `scrollPosition` message to Swift on scroll events
+- Click listener intercepts `<a>` clicks, posts `linkClicked` message with `{href, scrollY}`
 
 ### ThemeManager.swift
-`@Observable` singleton. Persists selected theme to `UserDefaults` under key `"selectedTheme"`. Loads CSS content from bundle via `Bundle.main.url(forResource:withExtension:subdirectory:)`.
+`@Observable` class. Injectable via `init(defaults:bundle:)` for testability. Singleton via `ThemeManager.shared`. Persists selected theme to `UserDefaults` under key `"selectedTheme"`. Loads CSS content from bundle via `Bundle.main.url(forResource:withExtension:subdirectory:)`.
 
 ### NavigationHistory.swift
-`@Observable` class. Maintains a `stack: [URL]` and `currentIndex`. Provides `push(_:)`, `goBack()`, `goForward()`. Truncates forward history on new push.
+`@Observable` class. Maintains a `stack: [URL]`, `currentIndex`, and `scrollPositions: [Int: Double]`. Provides `push(_:)`, `goBack()`, `goForward()` (returns `(url, scrollY)` tuples), and `saveScrollPosition(_:)`. Truncates forward history and associated scroll positions on new push. Includes `os.Logger` debug logging.
+
+### LinkResolver.swift
+Static utility for markdown file detection (`isMarkdownFile(_:)`) and URL resolution (`resolve(href:relativeTo:)`). Extracted from MarkdownWebView Coordinator for testability.
 
 ### FileWatcher.swift
 Wraps `DispatchSource.makeFileSystemObjectSource`. Monitors `.write`, `.rename`, `.delete` events. Calls `onChange` closure on main queue. `watch(url:)` replaces previous watch; `stop()` cancels.
 
 ### Theme.swift
-`enum Theme: String, CaseIterable, Identifiable`. 8 cases. Properties: `displayName`, `cssFileName` (matches CSS filename without extension), `isDark` (used for mermaid theme selection).
+`enum Theme: String, CaseIterable, Identifiable`. 8 cases. Properties: `displayName`, `cssFileName` (matches CSS filename without extension), `isDark` (used for mermaid theme selection). Each theme's CSS file includes syntax highlighting rules for highlight.js classes.
 
 ### AppCommands.swift
-Adds `Theme` menu to menu bar with keyboard shortcuts (Ctrl+Cmd+1-8). Adds Back/Forward to toolbar menu. Defines `Notification.Name.navigateBack` and `.navigateForward`.
+Adds `Theme` menu to menu bar with keyboard shortcuts (Ctrl+Cmd+1-8). Adds Back/Forward to toolbar menu. Adds Find (Cmd+F) command. Custom About panel with version/build info. Defines `Notification.Name.navigateBack`, `.navigateForward`, and `.toggleFind`.
 
 ## 6. Build & Development Commands
 
 ```bash
-make setup          # Install XcodeGen, download marked.js + mermaid.js, generate .xcodeproj
+make setup          # Install XcodeGen, download marked.js + mermaid.js + highlight.js, generate .xcodeproj
 make generate       # Regenerate .xcodeproj from project.yml (after changing structure)
 make build          # xcodebuild Release build → build/Build/Products/Release/
 make build-cli      # Build CLI tool only
-make install        # Copy ReadDown.app to /Applications
-make install-cli    # Copy readdown binary to /usr/local/bin
+make test           # Run all unit tests (63 tests)
+make install        # Build + copy ReadDown.app to /Applications
+make install-cli    # Build + copy readdown binary to /usr/local/bin
 make install-all    # Both of the above
-make clean          # Remove build/ and .xcodeproj
+make package        # Build + create dist/ReadDown-{version}.zip
+make release        # Package + create GitHub Release via gh CLI
+make bump-major     # Bump major version, reset build number
+make bump-minor     # Bump minor version, reset build number
+make bump-patch     # Bump patch version, reset build number
+make clean          # Remove build/, dist/, and .xcodeproj
 ```
 
 To develop in Xcode: `open ReadDown.xcodeproj` (after `make setup` or `make generate`).
@@ -161,25 +199,49 @@ This results in `Contents/Resources/template.html`, `Contents/Resources/js/`, an
 
 ## 8. How to Add a New Theme
 
-1. Create `ReadDown/Resources/themes/{theme-name}.css` using CSS custom properties (copy an existing theme as template). Required properties: `--bg-color`, `--text-color`, `--heading-color`, `--link-color`, `--code-bg`, `--border-color`, `--blockquote-color`, `--table-alt-bg`, `--table-header-bg`.
+1. Create `ReadDown/Resources/themes/{theme-name}.css` using CSS custom properties (copy an existing theme as template). Required properties: `--bg-color`, `--text-color`, `--heading-color`, `--link-color`, `--code-bg`, `--border-color`, `--blockquote-color`, `--table-alt-bg`, `--table-header-bg`. Also include `.hljs-*` rules for syntax highlighting colors.
 2. Add a case to `Theme` enum in `ReadDown/Models/Theme.swift` with `rawValue` matching the CSS filename (without extension).
 3. Fill in `displayName`, `isDark`, and optionally a keyboard shortcut in `AppCommands.swift`.
-4. Rebuild.
+4. Update `testAllCasesCount` in `ReadDownTests/ThemeTests.swift`.
+5. Rebuild.
 
 ## 9. How to Extend Rendering
 
 The rendering pipeline is JS-based inside `template.html`. To add support for a new markdown extension:
 1. Add the JS library to `ReadDown/Resources/js/` (and download in `Scripts/setup.sh`)
 2. Add a `<script>` placeholder in `template.html` (pattern: `LIB_JS_PLACEHOLDER`)
-3. Inline it in `MarkdownWebView.loadTemplate()` (same pattern as marked/mermaid)
+3. Inline it in `MarkdownWebView.loadTemplate()` (same pattern as marked/mermaid/highlight.js)
 4. Hook into the rendering pipeline in the `<script>` block of `template.html`
 
 ## 10. Known Limitations & Future Work
 
 - **Copy-as-markdown context menu**: The JS bridge (`getRawMarkdown`, `getSelectedText`) is wired but the native `NSMenu` override for the WKWebView context menu is not yet fully implemented. The default WKWebView right-click menu works for rich text copy.
-- **No syntax highlighting**: Code blocks render as plain monospace text. Could add highlight.js.
 - **No print support**: Could add `window.print()` integration.
-- **No search**: Could add Cmd+F find-in-document.
 - **No file tree sidebar**: Could add a sidebar showing sibling/linked `.md` files.
 - **No edit mode**: Currently read-only. Could add a split-pane editor.
 - **Theme follows system**: Could auto-switch light/dark theme based on macOS appearance.
+
+## 11. Testing
+
+63 unit tests across 6 suites, run via `make test` or Cmd+U in Xcode:
+
+| Suite | Tests | Coverage |
+|-------|-------|----------|
+| NavigationHistoryTests | 15 | Push, back/forward, truncation, scroll save/restore/clear, edge cases |
+| LinkResolverTests | 17 | Markdown detection (all extensions, case insensitive), relative/absolute/parent resolution, HTTP, nil base, spaces, percent-encoding |
+| MarkdownDocumentTests | 11 | Init variants, content types, UTType identity, UTF-8 round-trip, unicode, empty text |
+| ThemeTests | 9 | Case count, rawValue/cssFileName, identifiable, light/dark, display names, uniqueness |
+| ThemeManagerTests | 7 | Default, persistence, restore, invalid fallback, CSS loading, missing bundle |
+| FileWatcherTests | 4 | Callback on write, stop prevents callback, watch replacement, nonexistent file |
+
+## 12. Debug Logging
+
+Navigation and rendering events are logged via `os.Logger` (subsystem `com.readdown.app`, categories: `Navigation`, `NavHistory`, `WebView`). To watch live:
+
+```bash
+log stream --predicate 'subsystem == "com.readdown.app"' --level debug
+```
+
+## 13. Releasing
+
+Releases can be created manually via `make release` (requires `gh` CLI) or automatically via GitHub Actions when a version tag is pushed. The CI workflow (`.github/workflows/release.yml`) runs on `macos-14` runners, builds the app, packages it as a zip, and creates a GitHub Release with the artifact attached.

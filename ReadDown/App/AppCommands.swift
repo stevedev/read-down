@@ -43,6 +43,13 @@ struct AppCommands: Commands {
             }
             .keyboardShortcut("]", modifiers: .command)
         }
+
+        CommandGroup(after: .textEditing) {
+            Button("Find...") {
+                NotificationCenter.default.post(name: .toggleFind, object: nil)
+            }
+            .keyboardShortcut("f", modifiers: .command)
+        }
     }
 
     private func shortcut(for theme: Theme) -> KeyboardShortcut? {
@@ -62,4 +69,5 @@ struct AppCommands: Commands {
 extension Notification.Name {
     static let navigateBack = Notification.Name("com.readdown.navigateBack")
     static let navigateForward = Notification.Name("com.readdown.navigateForward")
+    static let toggleFind = Notification.Name("com.readdown.toggleFind")
 }

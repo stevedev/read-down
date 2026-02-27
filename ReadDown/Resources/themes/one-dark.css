@@ -25,3 +25,12 @@ html { background-color: var(--bg-color); color: var(--text-color); }
 .markdown-body th, .markdown-body td { border-color: var(--border-color); }
 .markdown-body hr { border-top-color: var(--border-color); }
 .markdown-body strong { color: #d19a66; }
+.hljs { background: var(--code-bg); color: #abb2bf; }
+.hljs-keyword, .hljs-selector-tag { color: #c678dd; }
+.hljs-string, .hljs-attr { color: #98c379; }
+.hljs-comment, .hljs-quote { color: #5c6370; font-style: italic; }
+.hljs-number, .hljs-literal { color: #d19a66; }
+.hljs-title, .hljs-title.function_ { color: #61afef; }
+.hljs-built_in, .hljs-type { color: #e5c07b; }
+.hljs-variable, .hljs-template-variable { color: #e06c75; }
+.hljs-meta { color: #5c6370; }

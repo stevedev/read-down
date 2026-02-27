@@ -24,3 +24,12 @@ html { background-color: var(--bg-color); color: var(--text-color); }
 .markdown-body tr:nth-child(even) { background-color: var(--table-alt-bg); }
 .markdown-body th, .markdown-body td { border-color: var(--border-color); }
 .markdown-body hr { border-top-color: var(--border-color); }
+.hljs { background: var(--code-bg); color: var(--text-color); }
+.hljs-keyword, .hljs-selector-tag { color: #cf222e; }
+.hljs-string, .hljs-attr { color: #0a3069; }
+.hljs-comment, .hljs-quote { color: #6e7781; font-style: italic; }
+.hljs-number, .hljs-literal { color: #0550ae; }
+.hljs-title, .hljs-title.function_ { color: #8250df; }
+.hljs-built_in, .hljs-type { color: #0550ae; }
+.hljs-variable, .hljs-template-variable { color: #953800; }
+.hljs-meta { color: #6e7781; }

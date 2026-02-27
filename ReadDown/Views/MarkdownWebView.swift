@@ -1,11 +1,24 @@
 import SwiftUI
 import WebKit
+import os
+
+private let logger = Logger(subsystem: "com.readdown.app", category: "WebView")
+
+struct HeadingItem: Identifiable, Equatable {
+    let id: String
+    let level: Int
+    let text: String
+}
 
 struct MarkdownWebView: NSViewRepresentable {
     let markdown: String
     let theme: Theme
     let baseURL: URL?
+    var scrollY: Double = 0
     var onNavigateToFile: ((URL) -> Void)?
+    var onLinkClickedWithScroll: ((_ url: URL, _ scrollY: Double) -> Void)?
+    var onHeadingsExtracted: (([HeadingItem]) -> Void)?
+    var onScrollPositionChanged: ((Double) -> Void)?
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -18,7 +31,10 @@ struct MarkdownWebView: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.webView = webView
 
-        webView.configuration.userContentController.add(coordinator, name: "linkClicked")
+        let ucc = webView.configuration.userContentController
+        ucc.add(coordinator, name: "linkClicked")
+        ucc.add(coordinator, name: "headingsExtracted")
+        ucc.add(coordinator, name: "scrollPosition")
         loadTemplate(into: webView, coordinator: coordinator)
         setupContextMenu(webView: webView, coordinator: coordinator)
 
@@ -28,15 +44,36 @@ struct MarkdownWebView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         let coordinator = context.coordinator
         coordinator.onNavigateToFile = onNavigateToFile
+        coordinator.onLinkClickedWithScroll = onLinkClickedWithScroll
+        coordinator.onHeadingsExtracted = onHeadingsExtracted
+        coordinator.onScrollPositionChanged = onScrollPositionChanged
         coordinator.baseURL = baseURL
         coordinator.currentTheme = theme
 
-        if coordinator.isLoaded {
-            updateBaseURL(in: webView, baseURL: baseURL)
-            applyTheme(to: webView, theme: theme)
-            renderMarkdown(in: webView, markdown: markdown, isDark: theme.isDark)
-        } else {
+        guard coordinator.isLoaded else {
             coordinator.pendingMarkdown = markdown
+            coordinator.pendingScrollY = scrollY
+            return
+        }
+
+        updateBaseURL(in: webView, baseURL: baseURL)
+
+        let contentChanged = coordinator.lastRenderedMarkdown != markdown
+        let themeChanged = coordinator.lastRenderedTheme != theme
+
+        if contentChanged || themeChanged {
+            logger.debug("render: content=\(contentChanged) theme=\(themeChanged) scrollY=\(scrollY)")
+            if themeChanged {
+                applyTheme(to: webView, theme: theme)
+            }
+            renderMarkdown(in: webView, markdown: markdown, isDark: theme.isDark, scrollY: scrollY)
+            coordinator.lastRenderedMarkdown = markdown
+            coordinator.lastRenderedTheme = theme
+            coordinator.lastRenderedScrollY = scrollY
+        } else if coordinator.lastRenderedScrollY != scrollY {
+            logger.debug("scroll-only: \(coordinator.lastRenderedScrollY) → \(scrollY)")
+            webView.evaluateJavaScript("window.scrollTo(0, \(scrollY));")
+            coordinator.lastRenderedScrollY = scrollY
         }
     }
 
@@ -52,8 +89,10 @@ struct MarkdownWebView: NSViewRepresentable {
 
         let markedJS = loadJS("marked.min")
         let mermaidJS = loadJS("mermaid.min")
+        let hljsJS = loadJS("highlight.min")
         html = html.replacingOccurrences(of: "MARKED_JS_PLACEHOLDER", with: markedJS)
         html = html.replacingOccurrences(of: "MERMAID_JS_PLACEHOLDER", with: mermaidJS)
+        html = html.replacingOccurrences(of: "HLJS_JS_PLACEHOLDER", with: hljsJS)
 
         webView.loadHTMLString(html, baseURL: baseURL)
     }
@@ -84,13 +123,13 @@ struct MarkdownWebView: NSViewRepresentable {
         webView.evaluateJavaScript("window.applyThemeCSS('\(escapedCSS)');")
     }
 
-    private func renderMarkdown(in webView: WKWebView, markdown: String, isDark: Bool) {
+    private func renderMarkdown(in webView: WKWebView, markdown: String, isDark: Bool, scrollY: Double = 0) {
         let escaped = markdown
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "`", with: "\\`")
             .replacingOccurrences(of: "$", with: "\\$")
         webView.evaluateJavaScript("window.setRawMarkdown(`\(escaped)`);")
-        webView.evaluateJavaScript("window.renderMarkdown(`\(escaped)`, \(isDark));")
+        webView.evaluateJavaScript("window.renderMarkdown(`\(escaped)`, \(isDark), \(scrollY));")
     }
 
     private func setupContextMenu(webView: WKWebView, coordinator: Coordinator) {
@@ -113,9 +152,17 @@ struct MarkdownWebView: NSViewRepresentable {
         weak var webView: WKWebView?
         var isLoaded = false
         var pendingMarkdown: String?
+        var pendingScrollY: Double = 0
         var onNavigateToFile: ((URL) -> Void)?
+        var onLinkClickedWithScroll: ((_ url: URL, _ scrollY: Double) -> Void)?
+        var onHeadingsExtracted: (([HeadingItem]) -> Void)?
+        var onScrollPositionChanged: ((Double) -> Void)?
         var baseURL: URL?
         var currentTheme: Theme = .githubLight
+
+        var lastRenderedMarkdown: String?
+        var lastRenderedTheme: Theme?
+        var lastRenderedScrollY: Double = 0
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             isLoaded = true
@@ -140,7 +187,11 @@ struct MarkdownWebView: NSViewRepresentable {
                     .replacingOccurrences(of: "`", with: "\\`")
                     .replacingOccurrences(of: "$", with: "\\$")
                 webView.evaluateJavaScript("window.setRawMarkdown(`\(escaped)`);")
-                webView.evaluateJavaScript("window.renderMarkdown(`\(escaped)`, \(currentTheme.isDark));")
+                webView.evaluateJavaScript("window.renderMarkdown(`\(escaped)`, \(currentTheme.isDark), \(pendingScrollY));")
+
+                lastRenderedMarkdown = pending
+                lastRenderedTheme = currentTheme
+                lastRenderedScrollY = pendingScrollY
                 pendingMarkdown = nil
             }
         }
@@ -164,17 +215,19 @@ struct MarkdownWebView: NSViewRepresentable {
 
             if url.isFileURL, isMarkdownFile(url) {
                 decisionHandler(.cancel)
-                onNavigateToFile?(url)
+                DispatchQueue.main.async { [weak self] in
+                    self?.onNavigateToFile?(url)
+                }
                 return
             }
 
-            // Fallback: URL has a markdown extension but wasn't resolved to a file://
-            // URL (e.g. applewebdata:// from a nil base URL). Resolve manually.
             if isMarkdownFile(url), let base = baseURL {
                 let relativePath = url.path.hasPrefix("/") ? String(url.path.dropFirst()) : url.path
                 let resolved = base.deletingLastPathComponent().appendingPathComponent(relativePath)
                 decisionHandler(.cancel)
-                onNavigateToFile?(resolved)
+                DispatchQueue.main.async { [weak self] in
+                    self?.onNavigateToFile?(resolved)
+                }
                 return
             }
 
@@ -185,8 +238,35 @@ struct MarkdownWebView: NSViewRepresentable {
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            guard message.name == "linkClicked",
-                  let href = message.body as? String else { return }
+            switch message.name {
+            case "linkClicked":
+                handleLinkClicked(message)
+            case "headingsExtracted":
+                handleHeadingsExtracted(message)
+            case "scrollPosition":
+                if let y = message.body as? Double {
+                    onScrollPositionChanged?(y)
+                }
+            default:
+                break
+            }
+        }
+
+        private func handleLinkClicked(_ message: WKScriptMessage) {
+            let href: String
+            let scrollY: Double
+
+            if let dict = message.body as? [String: Any] {
+                href = dict["href"] as? String ?? ""
+                scrollY = dict["scrollY"] as? Double ?? 0
+            } else if let str = message.body as? String {
+                href = str
+                scrollY = 0
+            } else {
+                return
+            }
+
+            guard !href.isEmpty else { return }
 
             if href.hasPrefix("http://") || href.hasPrefix("https://") {
                 if let url = URL(string: href) {
@@ -200,7 +280,26 @@ struct MarkdownWebView: NSViewRepresentable {
             let standardized = resolved.standardized
 
             if isMarkdownFile(standardized) {
-                onNavigateToFile?(standardized)
+                logger.debug("linkClicked: \(href) scrollY=\(scrollY)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onLinkClickedWithScroll?(standardized, scrollY)
+                }
+            }
+        }
+
+        private func handleHeadingsExtracted(_ message: WKScriptMessage) {
+            guard let json = message.body as? String,
+                  let data = json.data(using: .utf8),
+                  let raw = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+
+            let headings = raw.compactMap { dict -> HeadingItem? in
+                guard let id = dict["id"] as? String,
+                      let level = dict["level"] as? Int,
+                      let text = dict["text"] as? String else { return nil }
+                return HeadingItem(id: id, level: level, text: text)
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.onHeadingsExtracted?(headings)
             }
         }
 

@@ -73,6 +73,7 @@
 </style>
 <script>MARKED_JS_PLACEHOLDER</script>
 <script>MERMAID_JS_PLACEHOLDER</script>
+<script>HLJS_JS_PLACEHOLDER</script>
 </head>
 <body>
 <div id="content" class="markdown-body"></div>
@@ -123,14 +124,54 @@
         }
     }
 
-    window.renderMarkdown = async function(mdText, isDark) {
+    function rewriteRelativeImages() {
+        var base = document.querySelector('base');
+        if (!base || !base.href) return;
+        var baseHref = base.href;
+        document.querySelectorAll('#content img').forEach(function(img) {
+            var src = img.getAttribute('src');
+            if (src && !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('file:')) {
+                img.src = baseHref + src;
+            }
+        });
+    }
+
+    function extractHeadings() {
+        var headings = [];
+        document.querySelectorAll('#content h1, #content h2, #content h3, #content h4, #content h5, #content h6').forEach(function(h, i) {
+            if (!h.id) h.id = 'heading-' + i;
+            headings.push({ id: h.id, level: parseInt(h.tagName[1]), text: h.textContent });
+        });
+        try {
+            window.webkit.messageHandlers.headingsExtracted.postMessage(JSON.stringify(headings));
+        } catch(e) {}
+    }
+
+    window.renderMarkdown = async function(mdText, isDark, scrollY) {
         if (!mermaidInitialized || isDark !== window._lastIsDark) {
             initMermaid(isDark);
             window._lastIsDark = isDark;
         }
-        const html = marked.parse(mdText);
+        var html = marked.parse(mdText);
         document.getElementById("content").innerHTML = html;
         await renderMermaidBlocks();
+        hljs.highlightAll();
+        rewriteRelativeImages();
+        extractHeadings();
+        window.scrollTo(0, (scrollY !== undefined && scrollY !== null) ? scrollY : 0);
+    };
+
+    window.scrollToHeading = function(id) {
+        var el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    window.findText = function(query, forward) {
+        if (!query) {
+            window.getSelection().removeAllRanges();
+            return false;
+        }
+        return window.find(query, false, !forward, true);
     };
 
     window.applyThemeCSS = function(css) {
@@ -177,7 +218,20 @@
         var href = target.getAttribute('href');
         if (!href || href.startsWith('#')) return;
         e.preventDefault();
-        window.webkit.messageHandlers.linkClicked.postMessage(href);
+        window.webkit.messageHandlers.linkClicked.postMessage({
+            href: href,
+            scrollY: window.scrollY
+        });
+    });
+
+    var _scrollTimer;
+    document.addEventListener('scroll', function() {
+        clearTimeout(_scrollTimer);
+        _scrollTimer = setTimeout(function() {
+            try {
+                window.webkit.messageHandlers.scrollPosition.postMessage(window.scrollY);
+            } catch(e) {}
+        }, 100);
     });
 })();
 </script>

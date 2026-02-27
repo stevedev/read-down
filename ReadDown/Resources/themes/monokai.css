@@ -26,3 +26,12 @@ html { background-color: var(--bg-color); color: var(--text-color); }
 .markdown-body hr { border-top-color: var(--border-color); }
 .markdown-body strong { color: #fd971f; }
 .markdown-body em { color: #e6db74; }
+.hljs { background: var(--code-bg); color: #f8f8f2; }
+.hljs-keyword, .hljs-selector-tag { color: #f92672; }
+.hljs-string, .hljs-attr { color: #e6db74; }
+.hljs-comment, .hljs-quote { color: #75715e; font-style: italic; }
+.hljs-number, .hljs-literal { color: #ae81ff; }
+.hljs-title, .hljs-title.function_ { color: #a6e22e; }
+.hljs-built_in, .hljs-type { color: #66d9ef; }
+.hljs-variable, .hljs-template-variable { color: #fd971f; }
+.hljs-meta { color: #75715e; }
